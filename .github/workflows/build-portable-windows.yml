@@ -287,7 +287,22 @@ jobs:
             if (-not (Test-Path $file)) { throw "Finished package is missing: $file" }
           }
 
-          # Smoke-test the actual game runtime for 8 seconds.
+          # Smoke-test Processing.py + Minim loading without opening an audio line.
+          # GitHub-hosted Windows runners have no usable audio output device, so
+          # running the full game there makes Minim fail even though it works on
+          # a normal Windows desktop.
+          $smokeSketch = Join-Path $buildRoot "runtime_smoke.py"
+          $smokeCode = @'
+          add_library('minim')
+
+          def setup():
+              size(160, 100)
+
+          def draw():
+              background(20)
+          '@
+          Set-Content -Path $smokeSketch -Value $smokeCode -Encoding ascii
+
           $stdout = Join-Path $buildRoot "smoke.out.txt"
           $stderr = Join-Path $buildRoot "smoke.err.txt"
           $javaExe = Join-Path $packageRoot "jre\bin\java.exe"
@@ -295,19 +310,19 @@ jobs:
             "-Xmx1024m",
             "-jar",
             (Join-Path $packageRoot "processing-py.jar"),
-            (Join-Path $packageRoot "runtime\sketch.py")
+            $smokeSketch
           ) -WorkingDirectory $packageRoot -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 
-          Start-Sleep -Seconds 8
+          Start-Sleep -Seconds 6
           if ($proc.HasExited) {
             Write-Host "----- stdout -----"
             Get-Content $stdout -ErrorAction SilentlyContinue
             Write-Host "----- stderr -----"
             Get-Content $stderr -ErrorAction SilentlyContinue
-            throw "The game exited during the smoke test with code $($proc.ExitCode)."
+            throw "The bundled Processing.py runtime exited during the smoke test with code $($proc.ExitCode)."
           }
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-          Write-Host "Smoke test passed."
+          Write-Host "Runtime smoke test passed."
 
           $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows-ARM64-Compatible.zip"
           Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipOut -CompressionLevel Optimal -Force
