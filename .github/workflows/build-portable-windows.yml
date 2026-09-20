@@ -269,8 +269,10 @@ jobs:
           - All original game assets are bundled.
 
           COMPATIBILITY
-          - Windows 10/11 x64
-          - Windows 11 ARM64 through built-in x64 application emulation
+          - Windows 10/11 x64 (Intel/AMD)
+          - Windows 11 ARM64 via built-in x64 application emulation (tested)
+          - This is an x64 build, not a native ARM64 build
+          - 32-bit Windows, macOS, and Linux are not supported by this package
 
           Original Grade 11 project by Christopher Lee.
           '@
@@ -324,7 +326,7 @@ jobs:
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           Write-Host "Runtime smoke test passed."
 
-          $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows-ARM64-Compatible.zip"
+          $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows-x64-Win11-ARM64.zip"
           Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipOut -CompressionLevel Optimal -Force
           Write-Host "Created: $zipOut"
           Write-Host "ZIP size: $((Get-Item $zipOut).Length) bytes"
@@ -332,7 +334,7 @@ jobs:
       - name: Upload portable game
         uses: actions/upload-artifact@v4
         with:
-          name: An-Otters-Quest-Windows-ARM64-Compatible
-          path: An-Otters-Quest-Windows-ARM64-Compatible.zip
+          name: An-Otters-Quest-Windows-x64-Win11-ARM64
+          path: An-Otters-Quest-Windows-x64-Win11-ARM64.zip
           if-no-files-found: error
           compression-level: 0
