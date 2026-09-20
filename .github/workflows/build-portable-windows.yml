@@ -30,6 +30,7 @@ jobs:
               [string[]]$Urls,
               [string]$OutFile
             )
+
             foreach ($url in $Urls) {
               try {
                 Write-Host "Downloading $url"
@@ -44,42 +45,114 @@ jobs:
                 Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
               }
             }
+
             throw "All download URLs failed for $OutFile"
           }
 
-          # Standalone Processing.py runtime.
-          $processingPyZip = Join-Path $buildRoot "processing.py-windows64.zip"
+          # Processing 3.5.4 supplies the matching Processing core and a known-good Java 8 runtime.
+          $processingZip = Join-Path $buildRoot "processing-3.5.4-windows64.zip"
           Get-Download -Urls @(
-            "https://py.processing.org/processing.py-windows64.zip",
-            "http://py.processing.org/processing.py-windows64.zip"
-          ) -OutFile $processingPyZip
+            "https://github.com/processing/processing/releases/download/processing-0270-3.5.4/processing-3.5.4-windows64.zip",
+            "https://download.processing.org/processing-3.5.4-windows64.zip"
+          ) -OutFile $processingZip
 
-          $processingPyExtract = Join-Path $buildRoot "processingpy"
-          Expand-Archive -Path $processingPyZip -DestinationPath $processingPyExtract -Force
-
-          $processingPyJar = Get-ChildItem -Path $processingPyExtract -Filter "processing-py.jar" -Recurse | Select-Object -First 1
-          if (-not $processingPyJar) {
-            throw "processing-py.jar was not found in the standalone Processing.py archive."
+          $processingExtract = Join-Path $buildRoot "processing"
+          Expand-Archive -Path $processingZip -DestinationPath $processingExtract -Force
+          $processingExe = Get-ChildItem -Path $processingExtract -Filter "processing.exe" -Recurse | Select-Object -First 1
+          if (-not $processingExe) {
+            throw "Processing 3.5.4 was not extracted correctly."
           }
-          $runtimeRoot = $processingPyJar.Directory.FullName
-          Write-Host "Processing.py runtime root: $runtimeRoot"
+          $processingRoot = $processingExe.Directory.FullName
+          Write-Host "Processing root: $processingRoot"
 
-          # Bundle a Java 8 runtime so users do not need Java installed.
-          $jreZip = Join-Path $buildRoot "temurin8-jre.zip"
+          # Archived Python Mode build for Processing 3.
+          $pythonModeZip = Join-Path $buildRoot "PythonMode-for-Processing3.zip"
           Get-Download -Urls @(
-            "https://api.adoptium.net/v3/binary/latest/8/ga/windows/x64/jre/hotspot/normal/eclipse?project=jdk"
-          ) -OutFile $jreZip
+            "https://raw.githubusercontent.com/tabreturn/processing.py-for-processing-4/main/PythonMode-for-Processing3.zip",
+            "https://github.com/tabreturn/processing.py-for-processing-4/raw/main/PythonMode-for-Processing3.zip"
+          ) -OutFile $pythonModeZip
 
-          $jreExtract = Join-Path $buildRoot "jre-extract"
-          Expand-Archive -Path $jreZip -DestinationPath $jreExtract -Force
-          $javaw = Get-ChildItem -Path $jreExtract -Filter "javaw.exe" -Recurse | Select-Object -First 1
-          if (-not $javaw) {
-            throw "javaw.exe was not found in the Java 8 runtime."
+          $pythonModeExtract = Join-Path $buildRoot "pythonmode"
+          Expand-Archive -Path $pythonModeZip -DestinationPath $pythonModeExtract -Force
+          $pythonModeJar = Get-ChildItem -Path $pythonModeExtract -Filter "PythonMode.jar" -Recurse | Select-Object -First 1
+          if (-not $pythonModeJar) {
+            throw "PythonMode.jar was not found in the Python Mode archive."
           }
-          $jreHome = $javaw.Directory.Parent.FullName
+          $pythonModeRoot = $pythonModeJar.Directory.Parent.FullName
+          Write-Host "Python Mode root: $pythonModeRoot"
+
+          # Create a standalone Processing.py fat JAR from the exact runtime pieces
+          # used by Python Mode + Processing 3.5.4.
+          $runtimeRoot = Join-Path $buildRoot "processing-py-runtime"
+          New-Item -ItemType Directory -Force -Path $runtimeRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "libraries") | Out-Null
+
+          $jarTool = Join-Path $processingRoot "java\bin\jar.exe"
+          if (-not (Test-Path $jarTool)) {
+            throw "Bundled Java 8 jar.exe was not found."
+          }
+
+          $pythonModeDir = $pythonModeJar.Directory.FullName
+          $jythonJar = Get-ChildItem -Path $pythonModeDir -Filter "jython*.jar" | Select-Object -First 1
+          $guavaJar = Get-ChildItem -Path $pythonModeDir -Filter "guava*.jar" | Select-Object -First 1
+
+          $coreDir = Join-Path $processingRoot "core\library"
+          $coreJar = Join-Path $coreDir "core.jar"
+          $gluegenJar = Join-Path $coreDir "gluegen-rt.jar"
+          $joglJar = Join-Path $coreDir "jogl-all.jar"
+
+          $required = @(
+            $pythonModeJar.FullName,
+            $jythonJar.FullName,
+            $guavaJar.FullName,
+            $coreJar,
+            $gluegenJar,
+            $joglJar
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              throw "Required runtime JAR missing: $file"
+            }
+          }
+
+          $mergeDir = Join-Path $buildRoot "fatjar-contents"
+          New-Item -ItemType Directory -Force -Path $mergeDir | Out-Null
+
+          Push-Location $mergeDir
+          try {
+            foreach ($inputJar in $required) {
+              Write-Host "Merging $(Split-Path $inputJar -Leaf)"
+              & $jarTool xf $inputJar
+              if ($LASTEXITCODE -ne 0) {
+                throw "Failed extracting $inputJar"
+              }
+            }
+
+            # Signed metadata from source JARs is invalid after merging.
+            Remove-Item "META-INF\MANIFEST.MF" -Force -ErrorAction SilentlyContinue
+            Get-ChildItem "META-INF" -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Extension -in ".SF", ".RSA", ".DSA" } |
+              Remove-Item -Force -ErrorAction SilentlyContinue
+
+            $manifestPath = Join-Path $buildRoot "standalone-manifest.mf"
+            [System.IO.File]::WriteAllText(
+              $manifestPath,
+              "Manifest-Version: 1.0`r`nMain-Class: jycessing.Runner`r`n`r`n",
+              [System.Text.Encoding]::ASCII
+            )
+
+            $standaloneJar = Join-Path $runtimeRoot "processing-py.jar"
+            & $jarTool cfm $standaloneJar $manifestPath .
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create standalone processing-py.jar"
+            }
+          } finally {
+            Pop-Location
+          }
+
+          # Bundle the same Java 8 runtime shipped with Processing 3.5.4.
           $runtimeJre = Join-Path $runtimeRoot "jre"
-          Remove-Item $runtimeJre -Recurse -Force -ErrorAction SilentlyContinue
-          Copy-Item -Path $jreHome -Destination $runtimeJre -Recurse -Force
+          Copy-Item -Path (Join-Path $processingRoot "java") -Destination $runtimeJre -Recurse -Force
 
           # Add Minim 2.2.2 in Processing's expected libraries/minim layout.
           $minimZip = Join-Path $buildRoot "minim.zip"
@@ -96,10 +169,7 @@ jobs:
             throw "minim.jar was not found in the Minim archive."
           }
           $minimRoot = $minimJar.Directory.Parent.FullName
-          $librariesRoot = Join-Path $runtimeRoot "libraries"
-          New-Item -ItemType Directory -Force -Path $librariesRoot | Out-Null
-          $runtimeMinim = Join-Path $librariesRoot "minim"
-          Remove-Item $runtimeMinim -Recurse -Force -ErrorAction SilentlyContinue
+          $runtimeMinim = Join-Path $runtimeRoot "libraries\minim"
           Copy-Item -Path $minimRoot -Destination $runtimeMinim -Recurse -Force
           Write-Host "Minim installed at: $runtimeMinim"
 
@@ -113,10 +183,9 @@ jobs:
             throw "Source Python file was not found: $sketchFile"
           }
 
-          # The Processing.py standalone runtime has a built-in launcher generator.
-          # These two lines run only during packaging. In the packaged game the
-          # launcher supplies --internal, so launcher.create() returns and the
-          # original game runs normally.
+          # Processing.py contains its own Windows launcher generator. These lines
+          # only package the build. When the finished EXE launches with --internal,
+          # launcher.create() returns immediately and the original game code runs.
           $originalCode = Get-Content -Path $sketchFile -Raw
           $launcherHeader = @'
           import launcher
@@ -126,7 +195,7 @@ jobs:
 
           Push-Location $runtimeRoot
           try {
-            & (Join-Path $runtimeJre "bin\java.exe") -Xmx1024m -jar $processingPyJar.FullName $sketchFile
+            & (Join-Path $runtimeJre "bin\java.exe") -Xmx1024m -jar (Join-Path $runtimeRoot "processing-py.jar") $sketchFile
             if ($LASTEXITCODE -ne 0) {
               throw "Processing.py launcher generation failed with exit code $LASTEXITCODE"
             }
@@ -139,12 +208,12 @@ jobs:
             throw "Expected generated Windows launcher folder was not created: $generated"
           }
 
-          # launcher.create leaves an empty JRE placeholder. Replace it with Java 8.
+          # launcher.create makes an empty jre placeholder. Replace it with Java 8.
           $generatedJre = Join-Path $generated "jre"
           Remove-Item $generatedJre -Recurse -Force -ErrorAction SilentlyContinue
           Copy-Item -Path $runtimeJre -Destination $generatedJre -Recurse -Force
 
-          # Give the launcher a clean visible filename while keeping its matching INI.
+          # Capitalize the one file users need to open; keep its matching INI basename.
           $lowerExe = Join-Path $generated "an_otters_quest.exe"
           $lowerIni = Join-Path $generated "an_otters_quest.ini"
           if (Test-Path $lowerExe) {
@@ -161,21 +230,31 @@ jobs:
           HOW TO PLAY
           1. Extract this entire ZIP file.
           2. Double-click An_Otters_Quest.exe.
-          3. Keep all folders/files beside the EXE; they are part of the bundled runtime.
+          3. Keep the other folders/files beside the EXE. They are the bundled runtime.
 
-          Nothing else needs to be installed:
-          - Processing is bundled through the standalone Processing.py runtime.
+          No separate installation is required:
+          - Processing.py runtime is bundled.
           - Java 8 is bundled.
           - Minim is bundled.
-          - All original game assets are bundled.
+          - All original image/audio assets are bundled.
 
-          Original project by Christopher Lee.
+          Original Grade 11 project by Christopher Lee.
           '@
           Set-Content -Path (Join-Path $generated "README - How to Play.txt") -Value $readme -Encoding utf8
 
-          # Remove build/debug text files if any were produced.
           Get-ChildItem -Path $generated -Recurse -Include "*.out.txt","*.err.txt" -ErrorAction SilentlyContinue |
             Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # Sanity checks on the finished package.
+          $finishedExe = Join-Path $generated "An_Otters_Quest.exe"
+          $finishedJar = Join-Path $generated "processing-py.jar"
+          $finishedJava = Join-Path $generated "jre\bin\javaw.exe"
+          $finishedSketch = Join-Path $generated "runtime\sketch.py"
+          foreach ($file in @($finishedExe, $finishedJar, $finishedJava, $finishedSketch)) {
+            if (-not (Test-Path $file)) {
+              throw "Finished package is missing: $file"
+            }
+          }
 
           $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows-x64.zip"
           Compress-Archive -Path (Join-Path $generated "*") -DestinationPath $zipOut -CompressionLevel Optimal -Force
