@@ -1,0 +1,73 @@
+name: Publish Windows release
+
+on:
+  push:
+    paths:
+      - ".github/workflows/publish-windows-release.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Wait for packaged build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run watch 35540119484 --repo "${{ github.repository }}" --exit-status
+
+      - name: Download packaged build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-asset
+          gh run download 35540119484 \
+            --repo "${{ github.repository }}" \
+            --name "An-Otters-Quest-Windows-x64-Win11-ARM64" \
+            --dir release-asset
+          ls -lah release-asset
+
+      - name: Publish v1.0.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## An Otter's Quest: A Tale of Unity — Windows Portable Build
+
+          This release packages the original Grade 11 Processing Python Mode project into a self-contained Windows download. Processing, Python Mode, Java, and Minim do not need to be installed separately.
+
+          ### Compatibility
+
+          - **Windows 10/11 x64 (Intel/AMD):** supported
+          - **Windows 11 ARM64:** supported through Windows' built-in x64 application emulation; tested on ARM64
+          - **Native ARM64:** this is not a native ARM64 build
+          - **32-bit Windows:** not supported by this package
+          - **macOS / Linux:** not supported by this package
+
+          ### How to run
+
+          1. Download `An-Otters-Quest-Windows-x64-Win11-ARM64.zip`.
+          2. Extract the **entire** ZIP.
+          3. Double-click `An_Otters_Quest.exe`.
+          4. Keep the `jre`, `libraries`, and `runtime` folders beside the executable.
+
+          ### Bundled runtime
+
+          The package includes the Processing.py/Jython runtime, Processing 3.5.4-compatible runtime components, Java 8 x64, Minim 2.2.2, and the project's original image/audio assets.
+
+          > The executable is unsigned, so Windows SmartScreen may show an **Unknown publisher** warning on some systems.
+          EOF
+
+          gh release create "v1.0.0" \
+            "release-asset/An-Otters-Quest-Windows-x64-Win11-ARM64.zip" \
+            --repo "${{ github.repository }}" \
+            --target "main" \
+            --title "An Otter's Quest — Windows Portable Build v1.0.0" \
+            --notes-file release-notes.md \
+            --latest
