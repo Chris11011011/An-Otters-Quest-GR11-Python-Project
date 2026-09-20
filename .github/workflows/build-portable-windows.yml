@@ -241,7 +241,7 @@ jobs:
           '@
           Set-Content -Path $launcherC -Value $launcherSource -Encoding ascii
 
-          $vswhere = "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vsPath) { throw "Visual C++ build tools were not found." }
           $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
