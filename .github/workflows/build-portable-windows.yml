@@ -87,10 +87,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path $runtimeRoot | Out-Null
           New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "libraries") | Out-Null
 
-          $jarTool = Join-Path $processingRoot "java\bin\jar.exe"
-          if (-not (Test-Path $jarTool)) {
-            throw "Bundled Java 8 jar.exe was not found."
-          }
+          $jarTool = (Get-Command jar.exe -ErrorAction Stop).Source
+          Write-Host "Using JAR tool: $jarTool"
 
           $pythonModeDir = $pythonModeJar.Directory.FullName
           $jythonJar = Get-ChildItem -Path $pythonModeDir -Filter "jython*.jar" | Select-Object -First 1
