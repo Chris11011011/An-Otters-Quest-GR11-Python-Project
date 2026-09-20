@@ -41,7 +41,9 @@ Extract the full ZIP, then run `An_Otters_Quest.exe`. The package includes the P
 
 ## Demo
 
-**Full game demo:** [YouTube](https://youtu.be/OeyjnOh6Mb8)
+**Current gameplay demo:** [YouTube](https://youtu.be/7rkyAXxVDNc)
+
+**Original/full game demo:** [YouTube](https://youtu.be/OeyjnOh6Mb8)
 
 **Final presentation:** [`Computer Science Project Presentation.pptx`](docs/Computer%20Science%20Project%20Presentation.pptx)
 
