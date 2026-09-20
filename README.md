@@ -21,7 +21,7 @@ By: **Christopher Lee**
 
 The easiest way to experience the project is through the **playable Windows demo in the latest GitHub release**. It packages the original Processing project into a self-contained build, so you do not need to install Processing, Python Mode, Java, or Minim separately.
 
-### 🎮 [Try the latest playable release](https://github.com/Chris11011011/An-Otters-Quest-GR11-Python-Project/releases/latest)
+### [Try the latest playable release](https://github.com/Chris11011011/An-Otters-Quest-GR11-Python-Project/releases/latest)
 
 Download the Windows ZIP from the release, extract the **entire** folder, and launch `An_Otters_Quest.exe`.
 
@@ -43,7 +43,6 @@ Download the Windows ZIP from the release, extract the **entire** folder, and la
 
 If you would rather watch the project before downloading it:
 
-**Current gameplay demo:** [YouTube](https://youtu.be/7rkyAXxVDNc)
 
 **Original/full game demo:** [YouTube](https://youtu.be/OeyjnOh6Mb8)
 
