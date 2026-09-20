@@ -247,7 +247,7 @@ jobs:
           $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
           $launcherExe = Join-Path $packageRoot "An_Otters_Quest.exe"
 
-          $compileCmd = 'call "' + $vcvars + '" && cl /nologo /O2 /MT /DUNICODE /D_UNICODE "' + $launcherC + '" /Fe:"' + $launcherExe + '" /link /SUBSYSTEM:WINDOWS'
+          $compileCmd = 'call "' + $vcvars + '" && cl /nologo /O2 /MT /DUNICODE /D_UNICODE "' + $launcherC + '" /Fe:"' + $launcherExe + '" /link /SUBSYSTEM:WINDOWS user32.lib'
           cmd.exe /d /s /c $compileCmd
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $launcherExe)) {
             throw "Failed to compile the Windows launcher."
