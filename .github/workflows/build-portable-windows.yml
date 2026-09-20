@@ -50,10 +50,10 @@ jobs:
           }
 
           # Processing 3.5.4 supplies the matching Processing core and a known-good Java 8 runtime.
-          $processingZip = Join-Path $buildRoot "processing-3.5.4-windows64.zip"
+          $processingZip = Join-Path $buildRoot "processing-3.5.4-windows32.zip"
           Get-Download -Urls @(
-            "https://github.com/processing/processing/releases/download/processing-0270-3.5.4/processing-3.5.4-windows64.zip",
-            "https://download.processing.org/processing-3.5.4-windows64.zip"
+            "https://github.com/processing/processing/releases/download/processing-0270-3.5.4/processing-3.5.4-windows32.zip",
+            "https://download.processing.org/processing-3.5.4-windows32.zip"
           ) -OutFile $processingZip
 
           $processingExtract = Join-Path $buildRoot "processing"
@@ -155,9 +155,8 @@ jobs:
           # Add Minim 2.2.2 in Processing's expected libraries/minim layout.
           $minimZip = Join-Path $buildRoot "minim.zip"
           Get-Download -Urls @(
-            "https://github.com/ddf/Minim/archive/refs/tags/2.2.2.zip",
-            "https://github.com/ddf/Minim/archive/refs/tags/v2.2.2.zip",
-            "https://github.com/ddf/Minim/archive/refs/heads/master.zip"
+            "https://code.compartmental.net/minim/distro/minim-2.2.2.zip",
+            "https://github.com/ddf/Minim/releases/download/v2.2.2/minim-2.2.2.zip"
           ) -OutFile $minimZip
 
           $minimExtract = Join-Path $buildRoot "minim-extract"
@@ -221,9 +220,17 @@ jobs:
             Rename-Item -Path $lowerIni -NewName "An_Otters_Quest.ini"
           }
 
+          $finishedIni = Join-Path $generated "An_Otters_Quest.ini"
+          if (-not (Test-Path $finishedIni)) {
+            throw "Generated launcher INI was not found."
+          }
+          $ini = Get-Content -Path $finishedIni -Raw
+          $ini += "`r`nworking.directory=.`r`nvm.sysfirst=false`r`nvm.location=jre\\bin\\client\\jvm.dll|jre\\bin\\server\\jvm.dll`r`n"
+          Set-Content -Path $finishedIni -Value $ini -Encoding ascii
+
           $readme = @'
           An Otter's Quest: A Tale of Unity
-          Windows x64 portable build
+          Windows portable build
 
           HOW TO PLAY
           1. Extract this entire ZIP file.
@@ -254,7 +261,7 @@ jobs:
             }
           }
 
-          $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows-x64.zip"
+          $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows.zip"
           Compress-Archive -Path (Join-Path $generated "*") -DestinationPath $zipOut -CompressionLevel Optimal -Force
 
           Write-Host "Created: $zipOut"
@@ -264,7 +271,7 @@ jobs:
       - name: Upload portable game
         uses: actions/upload-artifact@v4
         with:
-          name: An-Otters-Quest-Windows-x64
-          path: An-Otters-Quest-Windows-x64.zip
+          name: An-Otters-Quest-Windows
+          path: An-Otters-Quest-Windows.zip
           if-no-files-found: error
           compression-level: 0
