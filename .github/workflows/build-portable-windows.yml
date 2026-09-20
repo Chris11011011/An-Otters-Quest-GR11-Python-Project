@@ -16,21 +16,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Build self-contained Windows package
+      - name: Build portable Windows package
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           $repoRoot = $env:GITHUB_WORKSPACE
           $buildRoot = Join-Path $repoRoot "_portable_build"
+          $packageRoot = Join-Path $buildRoot "An-Otters-Quest-Windows"
           New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
 
           function Get-Download {
             param(
               [string[]]$Urls,
               [string]$OutFile
             )
-
             foreach ($url in $Urls) {
               try {
                 Write-Host "Downloading $url"
@@ -45,27 +46,25 @@ jobs:
                 Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
               }
             }
-
             throw "All download URLs failed for $OutFile"
           }
 
-          # Processing 3.5.4 supplies the matching Processing core and a known-good Java 8 runtime.
-          $processingZip = Join-Path $buildRoot "processing-3.5.4-windows32.zip"
+          # Use the 64-bit Processing 3.5.4 runtime.
+          # Windows 11 on ARM64 supports x64 application emulation, so this avoids
+          # the old 32-bit WinRun4J launcher that was failing to find its JVM.
+          $processingZip = Join-Path $buildRoot "processing-3.5.4-windows64.zip"
           Get-Download -Urls @(
-            "https://github.com/processing/processing/releases/download/processing-0270-3.5.4/processing-3.5.4-windows32.zip",
-            "https://download.processing.org/processing-3.5.4-windows32.zip"
+            "https://github.com/processing/processing/releases/download/processing-0270-3.5.4/processing-3.5.4-windows64.zip",
+            "https://download.processing.org/processing-3.5.4-windows64.zip"
           ) -OutFile $processingZip
 
           $processingExtract = Join-Path $buildRoot "processing"
           Expand-Archive -Path $processingZip -DestinationPath $processingExtract -Force
           $processingExe = Get-ChildItem -Path $processingExtract -Filter "processing.exe" -Recurse | Select-Object -First 1
-          if (-not $processingExe) {
-            throw "Processing 3.5.4 was not extracted correctly."
-          }
+          if (-not $processingExe) { throw "Processing 3.5.4 was not extracted correctly." }
           $processingRoot = $processingExe.Directory.FullName
-          Write-Host "Processing root: $processingRoot"
 
-          # Archived Python Mode build for Processing 3.
+          # Archived Python Mode for Processing 3.
           $pythonModeZip = Join-Path $buildRoot "PythonMode-for-Processing3.zip"
           Get-Download -Urls @(
             "https://raw.githubusercontent.com/tabreturn/processing.py-for-processing-4/main/PythonMode-for-Processing3.zip",
@@ -75,58 +74,42 @@ jobs:
           $pythonModeExtract = Join-Path $buildRoot "pythonmode"
           Expand-Archive -Path $pythonModeZip -DestinationPath $pythonModeExtract -Force
           $pythonModeJar = Get-ChildItem -Path $pythonModeExtract -Filter "PythonMode.jar" -Recurse | Select-Object -First 1
-          if (-not $pythonModeJar) {
-            throw "PythonMode.jar was not found in the Python Mode archive."
-          }
-          $pythonModeRoot = $pythonModeJar.Directory.Parent.FullName
-          Write-Host "Python Mode root: $pythonModeRoot"
-
-          # Create a standalone Processing.py fat JAR from the exact runtime pieces
-          # used by Python Mode + Processing 3.5.4.
-          $runtimeRoot = Join-Path $buildRoot "processing-py-runtime"
-          New-Item -ItemType Directory -Force -Path $runtimeRoot | Out-Null
-          New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "libraries") | Out-Null
-
-          $jarTool = (Get-Command jar.exe -ErrorAction Stop).Source
-          Write-Host "Using JAR tool: $jarTool"
+          if (-not $pythonModeJar) { throw "PythonMode.jar was not found." }
 
           $pythonModeDir = $pythonModeJar.Directory.FullName
           $jythonJar = Get-ChildItem -Path $pythonModeDir -Filter "jython*.jar" | Select-Object -First 1
           $guavaJar = Get-ChildItem -Path $pythonModeDir -Filter "guava*.jar" | Select-Object -First 1
+          if (-not $jythonJar) { throw "Jython JAR was not found in Python Mode." }
+          if (-not $guavaJar) { throw "Guava JAR was not found in Python Mode." }
 
+          # Assemble a standalone Processing.py JAR from Python Mode plus the exact
+          # Processing 3.5.4 core and Windows x64 native JARs.
           $coreDir = Join-Path $processingRoot "core\library"
-          $coreJar = Join-Path $coreDir "core.jar"
-          $gluegenJar = Join-Path $coreDir "gluegen-rt.jar"
-          $joglJar = Join-Path $coreDir "jogl-all.jar"
-
           $required = @(
             $pythonModeJar.FullName,
             $jythonJar.FullName,
             $guavaJar.FullName,
-            $coreJar,
-            $gluegenJar,
-            $joglJar
+            (Join-Path $coreDir "core.jar"),
+            (Join-Path $coreDir "gluegen-rt.jar"),
+            (Join-Path $coreDir "jogl-all.jar"),
+            (Join-Path $coreDir "gluegen-rt-natives-windows-amd64.jar"),
+            (Join-Path $coreDir "jogl-all-natives-windows-amd64.jar")
           )
           foreach ($file in $required) {
-            if (-not (Test-Path $file)) {
-              throw "Required runtime JAR missing: $file"
-            }
+            if (-not (Test-Path $file)) { throw "Required runtime JAR missing: $file" }
           }
 
+          $jarTool = (Get-Command jar.exe -ErrorAction Stop).Source
           $mergeDir = Join-Path $buildRoot "fatjar-contents"
           New-Item -ItemType Directory -Force -Path $mergeDir | Out-Null
 
           Push-Location $mergeDir
           try {
             foreach ($inputJar in $required) {
-              Write-Host "Merging $(Split-Path $inputJar -Leaf)"
               & $jarTool xf $inputJar
-              if ($LASTEXITCODE -ne 0) {
-                throw "Failed extracting $inputJar"
-              }
+              if ($LASTEXITCODE -ne 0) { throw "Failed extracting $inputJar" }
             }
 
-            # Signed metadata from source JARs is invalid after merging.
             Remove-Item "META-INF\MANIFEST.MF" -Force -ErrorAction SilentlyContinue
             Get-ChildItem "META-INF" -File -ErrorAction SilentlyContinue |
               Where-Object { $_.Extension -in ".SF", ".RSA", ".DSA" } |
@@ -139,20 +122,20 @@ jobs:
               [System.Text.Encoding]::ASCII
             )
 
-            $standaloneJar = Join-Path $runtimeRoot "processing-py.jar"
-            & $jarTool cfm $standaloneJar $manifestPath .
-            if ($LASTEXITCODE -ne 0) {
-              throw "Failed to create standalone processing-py.jar"
-            }
+            & $jarTool cfm (Join-Path $packageRoot "processing-py.jar") $manifestPath .
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create processing-py.jar" }
           } finally {
             Pop-Location
           }
 
-          # Bundle the same Java 8 runtime shipped with Processing 3.5.4.
-          $runtimeJre = Join-Path $runtimeRoot "jre"
-          Copy-Item -Path (Join-Path $processingRoot "java") -Destination $runtimeJre -Recurse -Force
+          # Bundle Processing 3.5.4's own 64-bit Java 8 runtime.
+          $processingJava = Join-Path $processingRoot "java"
+          if (-not (Test-Path (Join-Path $processingJava "bin\javaw.exe"))) {
+            throw "The Processing 3.5.4 Java runtime was not found."
+          }
+          Copy-Item -Path $processingJava -Destination (Join-Path $packageRoot "jre") -Recurse -Force
 
-          # Add Minim 2.2.2 in Processing's expected libraries/minim layout.
+          # Bundle Minim 2.2.2.
           $minimZip = Join-Path $buildRoot "minim.zip"
           Get-Download -Urls @(
             "https://code.compartmental.net/minim/distro/minim-2.2.2.zip",
@@ -162,116 +145,179 @@ jobs:
           $minimExtract = Join-Path $buildRoot "minim-extract"
           Expand-Archive -Path $minimZip -DestinationPath $minimExtract -Force
           $minimJar = Get-ChildItem -Path $minimExtract -Filter "minim.jar" -Recurse | Select-Object -First 1
-          if (-not $minimJar) {
-            throw "minim.jar was not found in the Minim archive."
-          }
+          if (-not $minimJar) { throw "minim.jar was not found." }
           $minimRoot = $minimJar.Directory.Parent.FullName
-          $runtimeMinim = Join-Path $runtimeRoot "libraries\minim"
-          Copy-Item -Path $minimRoot -Destination $runtimeMinim -Recurse -Force
-          Write-Host "Minim installed at: $runtimeMinim"
+          $librariesRoot = Join-Path $packageRoot "libraries"
+          New-Item -ItemType Directory -Force -Path $librariesRoot | Out-Null
+          Copy-Item -Path $minimRoot -Destination (Join-Path $librariesRoot "minim") -Recurse -Force
 
-          # Make an isolated build copy of the original game.
+          # Copy the original game source and assets.
           $projectSource = Join-Path $repoRoot "An_Otters_Quest_a_Tale_of_Unity"
-          $sketchRoot = Join-Path $buildRoot "sketch"
-          Copy-Item -Path $projectSource -Destination $sketchRoot -Recurse -Force
+          $runtimeDir = Join-Path $packageRoot "runtime"
+          New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+          Copy-Item -Path (Join-Path $projectSource "An_Otters_Quest_a_Tale_of_Unity.py") -Destination (Join-Path $runtimeDir "sketch.py") -Force
+          Copy-Item -Path (Join-Path $projectSource "data") -Destination (Join-Path $runtimeDir "data") -Recurse -Force
 
-          $sketchFile = Join-Path $sketchRoot "An_Otters_Quest_a_Tale_of_Unity.py"
-          if (-not (Test-Path $sketchFile)) {
-            throw "Source Python file was not found: $sketchFile"
+          # Build a tiny x64 native launcher. It starts the bundled Java directly,
+          # so it never looks in the Windows Java registry.
+          $launcherC = Join-Path $buildRoot "launcher.c"
+          $launcherSource = @'
+          #define UNICODE
+          #define _UNICODE
+          #include <windows.h>
+          #include <wchar.h>
+
+          static void show_error(const wchar_t *message) {
+              MessageBoxW(NULL, message, L"An Otter's Quest - Startup Error", MB_OK | MB_ICONERROR);
           }
 
-          # Processing.py contains its own Windows launcher generator. These lines
-          # only package the build. When the finished EXE launches with --internal,
-          # launcher.create() returns immediately and the original game code runs.
-          $originalCode = Get-Content -Path $sketchFile -Raw
-          $launcherHeader = @'
-          import launcher
-          launcher.create(name="An_Otters_Quest", bundle=["data"], platforms=["win"], outdir="dist.platforms")
+          int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR lpCmdLine, int nCmdShow) {
+              wchar_t root[MAX_PATH];
+              DWORD len = GetModuleFileNameW(NULL, root, MAX_PATH);
+              if (len == 0 || len >= MAX_PATH) {
+                  show_error(L"Could not determine the game folder.");
+                  return 1;
+              }
+
+              wchar_t *slash = wcsrchr(root, L'\\');
+              if (!slash) {
+                  show_error(L"Could not determine the game folder.");
+                  return 1;
+              }
+              *slash = L'\0';
+
+              if (!SetCurrentDirectoryW(root)) {
+                  show_error(L"Could not open the game folder.");
+                  return 1;
+              }
+
+              wchar_t javaPath[MAX_PATH];
+              swprintf_s(javaPath, MAX_PATH, L"%s\\jre\\bin\\javaw.exe", root);
+
+              DWORD attrs = GetFileAttributesW(javaPath);
+              if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+                  show_error(L"The bundled Java runtime is missing. Re-extract the entire ZIP before launching the game.");
+                  return 1;
+              }
+
+              wchar_t command[2048];
+              swprintf_s(
+                  command,
+                  2048,
+                  L"\"%s\" -Xmx1024m -jar \"%s\\processing-py.jar\" \"%s\\runtime\\sketch.py\"",
+                  javaPath, root, root
+              );
+
+              STARTUPINFOW si;
+              PROCESS_INFORMATION pi;
+              ZeroMemory(&si, sizeof(si));
+              si.cb = sizeof(si);
+              ZeroMemory(&pi, sizeof(pi));
+
+              BOOL ok = CreateProcessW(
+                  javaPath,
+                  command,
+                  NULL,
+                  NULL,
+                  FALSE,
+                  0,
+                  NULL,
+                  root,
+                  &si,
+                  &pi
+              );
+
+              if (!ok) {
+                  wchar_t errorMessage[512];
+                  swprintf_s(errorMessage, 512, L"Could not start the bundled Java runtime. Windows error code: %lu", GetLastError());
+                  show_error(errorMessage);
+                  return 1;
+              }
+
+              CloseHandle(pi.hThread);
+              CloseHandle(pi.hProcess);
+              return 0;
+          }
           '@
-          Set-Content -Path $sketchFile -Value ($launcherHeader + "`r`n" + $originalCode) -Encoding utf8
+          Set-Content -Path $launcherC -Value $launcherSource -Encoding ascii
 
-          Push-Location $runtimeRoot
-          try {
-            & (Join-Path $runtimeJre "bin\java.exe") -Xmx1024m -jar (Join-Path $runtimeRoot "processing-py.jar") $sketchFile
-            if ($LASTEXITCODE -ne 0) {
-              throw "Processing.py launcher generation failed with exit code $LASTEXITCODE"
-            }
-          } finally {
-            Pop-Location
-          }
+          $vswhere = "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) { throw "Visual C++ build tools were not found." }
+          $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
+          $launcherExe = Join-Path $packageRoot "An_Otters_Quest.exe"
 
-          $generated = Join-Path $sketchRoot "dist.platforms\win"
-          if (-not (Test-Path $generated)) {
-            throw "Expected generated Windows launcher folder was not created: $generated"
+          $compileCmd = 'call "' + $vcvars + '" && cl /nologo /O2 /MT /DUNICODE /D_UNICODE "' + $launcherC + '" /Fe:"' + $launcherExe + '" /link /SUBSYSTEM:WINDOWS'
+          cmd.exe /d /s /c $compileCmd
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $launcherExe)) {
+            throw "Failed to compile the Windows launcher."
           }
-
-          # launcher.create makes an empty jre placeholder. Replace it with Java 8.
-          $generatedJre = Join-Path $generated "jre"
-          Remove-Item $generatedJre -Recurse -Force -ErrorAction SilentlyContinue
-          Copy-Item -Path $runtimeJre -Destination $generatedJre -Recurse -Force
-
-          # Capitalize the one file users need to open; keep its matching INI basename.
-          $lowerExe = Join-Path $generated "an_otters_quest.exe"
-          $lowerIni = Join-Path $generated "an_otters_quest.ini"
-          if (Test-Path $lowerExe) {
-            Rename-Item -Path $lowerExe -NewName "An_Otters_Quest.exe"
-          }
-          if (Test-Path $lowerIni) {
-            Rename-Item -Path $lowerIni -NewName "An_Otters_Quest.ini"
-          }
-
-          $finishedIni = Join-Path $generated "An_Otters_Quest.ini"
-          if (-not (Test-Path $finishedIni)) {
-            throw "Generated launcher INI was not found."
-          }
-          $ini = Get-Content -Path $finishedIni -Raw
-          $ini += "`r`nworking.directory=.`r`nvm.sysfirst=false`r`nvm.location=jre\\bin\\client\\jvm.dll|jre\\bin\\server\\jvm.dll`r`n"
-          Set-Content -Path $finishedIni -Value $ini -Encoding ascii
 
           $readme = @'
           An Otter's Quest: A Tale of Unity
-          Windows portable build
+          Portable Windows build
 
           HOW TO PLAY
-          1. Extract this entire ZIP file.
+          1. Extract the entire ZIP file.
           2. Double-click An_Otters_Quest.exe.
-          3. Keep the other folders/files beside the EXE. They are the bundled runtime.
+          3. Keep the jre, libraries, and runtime folders beside the EXE.
 
           No separate installation is required:
-          - Processing.py runtime is bundled.
-          - Java 8 is bundled.
-          - Minim is bundled.
-          - All original image/audio assets are bundled.
+          - Processing.py / Jython runtime is bundled.
+          - Java 8 x64 is bundled.
+          - Minim 2.2.2 is bundled.
+          - All original game assets are bundled.
+
+          COMPATIBILITY
+          - Windows 10/11 x64
+          - Windows 11 ARM64 through built-in x64 application emulation
 
           Original Grade 11 project by Christopher Lee.
           '@
-          Set-Content -Path (Join-Path $generated "README - How to Play.txt") -Value $readme -Encoding utf8
+          Set-Content -Path (Join-Path $packageRoot "README - How to Play.txt") -Value $readme -Encoding utf8
 
-          Get-ChildItem -Path $generated -Recurse -Include "*.out.txt","*.err.txt" -ErrorAction SilentlyContinue |
-            Remove-Item -Force -ErrorAction SilentlyContinue
-
-          # Sanity checks on the finished package.
-          $finishedExe = Join-Path $generated "An_Otters_Quest.exe"
-          $finishedJar = Join-Path $generated "processing-py.jar"
-          $finishedJava = Join-Path $generated "jre\bin\javaw.exe"
-          $finishedSketch = Join-Path $generated "runtime\sketch.py"
-          foreach ($file in @($finishedExe, $finishedJar, $finishedJava, $finishedSketch)) {
-            if (-not (Test-Path $file)) {
-              throw "Finished package is missing: $file"
-            }
+          foreach ($file in @(
+            (Join-Path $packageRoot "An_Otters_Quest.exe"),
+            (Join-Path $packageRoot "processing-py.jar"),
+            (Join-Path $packageRoot "jre\bin\javaw.exe"),
+            (Join-Path $packageRoot "libraries\minim\library\minim.jar"),
+            (Join-Path $packageRoot "runtime\sketch.py"),
+            (Join-Path $packageRoot "runtime\data\menu screen.png")
+          )) {
+            if (-not (Test-Path $file)) { throw "Finished package is missing: $file" }
           }
 
-          $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows.zip"
-          Compress-Archive -Path (Join-Path $generated "*") -DestinationPath $zipOut -CompressionLevel Optimal -Force
+          # Smoke-test the actual game runtime for 8 seconds.
+          $stdout = Join-Path $buildRoot "smoke.out.txt"
+          $stderr = Join-Path $buildRoot "smoke.err.txt"
+          $javaExe = Join-Path $packageRoot "jre\bin\java.exe"
+          $proc = Start-Process -FilePath $javaExe -ArgumentList @(
+            "-Xmx1024m",
+            "-jar",
+            (Join-Path $packageRoot "processing-py.jar"),
+            (Join-Path $packageRoot "runtime\sketch.py")
+          ) -WorkingDirectory $packageRoot -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 
+          Start-Sleep -Seconds 8
+          if ($proc.HasExited) {
+            Write-Host "----- stdout -----"
+            Get-Content $stdout -ErrorAction SilentlyContinue
+            Write-Host "----- stderr -----"
+            Get-Content $stderr -ErrorAction SilentlyContinue
+            throw "The game exited during the smoke test with code $($proc.ExitCode)."
+          }
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          Write-Host "Smoke test passed."
+
+          $zipOut = Join-Path $repoRoot "An-Otters-Quest-Windows-ARM64-Compatible.zip"
+          Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipOut -CompressionLevel Optimal -Force
           Write-Host "Created: $zipOut"
           Write-Host "ZIP size: $((Get-Item $zipOut).Length) bytes"
-          Get-ChildItem -Path $generated | Format-Table Name, Length, Mode
 
       - name: Upload portable game
         uses: actions/upload-artifact@v4
         with:
-          name: An-Otters-Quest-Windows
-          path: An-Otters-Quest-Windows.zip
+          name: An-Otters-Quest-Windows-ARM64-Compatible
+          path: An-Otters-Quest-Windows-ARM64-Compatible.zip
           if-no-files-found: error
           compression-level: 0
