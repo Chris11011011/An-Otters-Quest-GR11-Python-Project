@@ -17,29 +17,31 @@ By: **Christopher Lee**
 
 ---
 
-## Play the Game
+## Try the Game
 
-A self-contained Windows build is available from the repository releases:
+The easiest way to experience the project is through the **playable Windows demo in the latest GitHub release**. It packages the original Processing project into a self-contained build, so you do not need to install Processing, Python Mode, Java, or Minim separately.
 
-**[Download the latest Windows build](https://github.com/Chris11011011/An-Otters-Quest-GR11-Python-Project/releases/latest/download/An-Otters-Quest-Windows-x64-Win11-ARM64.zip)**
+### 🎮 [Try the latest playable release](https://github.com/Chris11011011/An-Otters-Quest-GR11-Python-Project/releases/latest)
 
-Extract the full ZIP, then run `An_Otters_Quest.exe`. The package includes the Processing.py/Jython runtime, Java 8, Minim 2.2.2, and all original game assets, so Processing and Java do not need to be installed separately.
+Download the Windows ZIP from the release, extract the **entire** folder, and launch `An_Otters_Quest.exe`.
 
-### Current build compatibility
+> The current release is an **x64 Windows build**. It supports Windows 10/11 on Intel/AMD systems and has also been tested on Windows 11 ARM64 through built-in x64 emulation. Because the executable is unsigned, Windows SmartScreen may show an **Unknown publisher** warning.
+
+### Build compatibility
 
 | Platform | Compatibility |
 | --- | --- |
 | Windows 10/11 x64 (Intel/AMD) | Supported |
 | Windows 11 ARM64 | Supported through Windows' built-in x64 emulation; tested on ARM64 |
-| Windows 32-bit | Not supported by this build |
-| macOS | Not supported by this build |
-| Linux | Not supported by this build |
-
-> This is an **x64 Windows build**, not a native ARM64 build. Windows 11 ARM64 runs it through x64 emulation.
+| Windows 32-bit | Not supported |
+| macOS | Not supported |
+| Linux | Not supported |
 
 ---
 
-## Demo
+## Watch the Project
+
+If you would rather watch the project before downloading it:
 
 **Current gameplay demo:** [YouTube](https://youtu.be/7rkyAXxVDNc)
 
