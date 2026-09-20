@@ -17,6 +17,28 @@ By: **Christopher Lee**
 
 ---
 
+## Play the Game
+
+A self-contained Windows build is available from the repository releases:
+
+**[Download the latest Windows build](https://github.com/Chris11011011/An-Otters-Quest-GR11-Python-Project/releases/latest/download/An-Otters-Quest-Windows-x64-Win11-ARM64.zip)**
+
+Extract the full ZIP, then run `An_Otters_Quest.exe`. The package includes the Processing.py/Jython runtime, Java 8, Minim 2.2.2, and all original game assets, so Processing and Java do not need to be installed separately.
+
+### Current build compatibility
+
+| Platform | Compatibility |
+| --- | --- |
+| Windows 10/11 x64 (Intel/AMD) | Supported |
+| Windows 11 ARM64 | Supported through Windows' built-in x64 emulation; tested on ARM64 |
+| Windows 32-bit | Not supported by this build |
+| macOS | Not supported by this build |
+| Linux | Not supported by this build |
+
+> This is an **x64 Windows build**, not a native ARM64 build. Windows 11 ARM64 runs it through x64 emulation.
+
+---
+
 ## Demo
 
 **Full game demo:** [YouTube](https://youtu.be/OeyjnOh6Mb8)
@@ -139,10 +161,12 @@ The `data/` folder is the original Processing asset folder and contains everythi
 
 This was built as a **Processing Python Mode** project rather than a normal standalone Python program.
 
-To run it, you will need a compatible Processing installation with:
+To run the original source directly, you will need a compatible Processing installation with:
 
 1. **Python Mode**
 2. The **Minim** audio library
+
+A working reconstruction has been verified with **Processing 3.5.4**, **Python Mode for Processing 3**, and **Minim 2.2.2**.
 
 Then open:
 
@@ -150,7 +174,7 @@ Then open:
 
 and run the sketch from Processing.
 
-The exact Processing version used in 2023 was not preserved with the project.
+The exact Processing version originally used in 2023 was not preserved with the project, so the verified setup above is a compatibility reconstruction rather than a claim about the original environment.
 
 ---
 
