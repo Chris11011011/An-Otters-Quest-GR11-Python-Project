@@ -21,7 +21,9 @@ By: **Christopher Lee**
 
 **Full game demo:** [YouTube](https://youtu.be/OeyjnOh6Mb8)
 
-The original final presentation was also used as supporting context when reconstructing this project walkthrough.
+**Final presentation:** [`Computer Science Project Presentation.pptx`](docs/Computer%20Science%20Project%20Presentation.pptx)
+
+> The presentation copy in this repository preserves the original slide content and embedded demo, with media compressed for a smaller GitHub-friendly file size.
 
 ---
 
@@ -69,7 +71,10 @@ The epilogue returns the otter home and rolls the original project credits.
 
 The full project is contained in one original Processing sketch:
 
-[`An_Otters_Quest_a_Tale_of_Unity.pyde`](An_Otters_Quest_a_Tale_of_Unity/An_Otters_Quest_a_Tale_of_Unity.pyde)
+- **Original Processing Python Mode source:** [`An_Otters_Quest_a_Tale_of_Unity.pyde`](An_Otters_Quest_a_Tale_of_Unity/An_Otters_Quest_a_Tale_of_Unity.pyde)
+- **Plain `.py` source copy for easier GitHub browsing:** [`An_Otters_Quest_a_Tale_of_Unity.py`](An_Otters_Quest_a_Tale_of_Unity/An_Otters_Quest_a_Tale_of_Unity.py)
+
+The `.pyde` file is the original project source used by Processing. The `.py` file contains the same source code and is included so the Python logic is easier to open and browse directly on GitHub.
 
 Although the code became fairly large, the overall structure is straightforward:
 
@@ -112,8 +117,11 @@ The info screen inside the game shows the controls and collectible progress.
 ```text
 An-Otters-Quest-GR11-Python-Project/
 ├── README.md
+├── docs/
+│   └── Computer Science Project Presentation.pptx
 └── An_Otters_Quest_a_Tale_of_Unity/
     ├── An_Otters_Quest_a_Tale_of_Unity.pyde
+    ├── An_Otters_Quest_a_Tale_of_Unity.py
     ├── sketch.properties
     └── data/
         ├── screen/background PNGs
